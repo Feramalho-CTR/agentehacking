@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
-/**
- * ================================
- * BRUTTUS — Agente de Pentest
- * Gemini + OpenAI → Resposta única
- * ================================
- */
+/* ================================
+   BRUTTUS — Agente de Pentest
+   Gemini + OpenAI → Resposta única
+   ================================ */
 
 /* -------- Queue para evitar rate limit -------- */
 class APIQueue {
@@ -45,7 +43,6 @@ const hhmm = (iso) =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const createMsg = (sender, text) => ({ sender, text, time: nowISO() });
-
 const lastN = (arr, n) => arr.slice(Math.max(arr.length - n, 0));
 
 /* -------- Fusão simples de respostas Gemini/OpenAI -------- */
@@ -154,46 +151,34 @@ Não envie vários comandos de uma vez sem explicação.
 Aguarde que eu retorne o output antes de sugerir o próximo passo.
 `;
 
-/* --------- Chamadas às IAs --------- */
+/* --------- BACKEND URL --------- */
+const BACKEND_URL = "http://127.0.0.1:8000";
+
+/* --------- Chamadas às IAs via backend --------- */
 async function callGemini(prompt) {
-  const key = process.env.REACT_APP_GEMINI_API_KEY;
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${key}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-      }),
-    }
-  );
+  const r = await fetch(`${BACKEND_URL}/api/gemini`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
   if (!r.ok) throw new Error(`Gemini HTTP ${r.status}`);
   const j = await r.json();
-  return j?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return j?.result || ""; // Ajuste conforme retorno do seu backend
 }
 
 async function callOpenAI(prompt) {
-  const key = process.env.REACT_APP_OPENAI_API_KEY;
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+  const r = await fetch(`${BACKEND_URL}/api/openai`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
-      max_tokens: 900,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
   });
   if (!r.ok) throw new Error(`OpenAI HTTP ${r.status}`);
   const j = await r.json();
-  return j?.choices?.[0]?.message?.content || "";
+  return j?.result || ""; // Ajuste conforme retorno do seu backend
 }
 
 /* =========================================================
-   COMPONENTE
+   COMPONENTE REACT
 ========================================================= */
 function App() {
   const [messages, setMessages] = useState([]);
@@ -373,22 +358,14 @@ export default App;
 
 /* --------- Teste de APIs --------- */
 async function testGemini() {
-  const key = process.env.REACT_APP_GEMINI_API_KEY;
-  if (!key) return { available: false, error: "GEMINI key ausente" };
   try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${key}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "ping" }] }],
-        }),
-      }
-    );
-    if (!r.ok) return { available: false, error: `HTTP ${r.status}` };
+    const r = await fetch(`${BACKEND_URL}/api/gemini`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "ping" }),
+    });
     const j = await r.json();
-    const ok = !!j?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const ok = !!j?.result;
     return { available: ok, error: ok ? null : "Resposta inválida" };
   } catch (e) {
     return { available: false, error: e.message };
@@ -396,24 +373,14 @@ async function testGemini() {
 }
 
 async function testOpenAI() {
-  const key = process.env.REACT_APP_OPENAI_API_KEY;
-  if (!key) return { available: false, error: "OPENAI key ausente" };
   try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    const r = await fetch(`${BACKEND_URL}/api/openai`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 8,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "ping" }),
     });
-    if (!r.ok) return { available: false, error: `HTTP ${r.status}` };
     const j = await r.json();
-    const ok = !!j?.choices?.[0]?.message?.content;
+    const ok = !!j?.result;
     return { available: ok, error: ok ? null : "Resposta inválida" };
   } catch (e) {
     return { available: false, error: e.message };
